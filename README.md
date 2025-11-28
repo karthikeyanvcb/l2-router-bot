@@ -1,187 +1,141 @@
 # L2 Router Bot
 
-**L2 Router Bot** is a self‑hosted service that automatically compares gas
-fees across multiple Ethereum Layer‑2 networks and routes your
-Ether transactions to the cheapest or fastest chain.  It exposes a
-REST API built with FastAPI and includes an optional lightweight
-dashboard for ad‑hoc usage.
+L2 Router Bot is a self‑hosted service that compares gas fees across multiple Ethereum Layer‑2 networks and automatically routes your Ether transfers to the cheapest (or fastest) chain. It’s built with Python 3.10+, FastAPI and Web3.py and designed to be easy to deploy and extend.
 
-## 🚀 Features
+## Features
 
-* **Multi‑network support** – currently supports Arbitrum One,
-  Optimism and Base.  RPC endpoints can be overridden using
-  environment variables.  Additional networks can be added easily.
-* **Fee estimation** – calculates gas price, estimated gas usage and
-  total fees in native token units.  Optionally fetches USD
-  conversions via the CoinGecko API.
-* **Route selection** – selects the cheapest network based on total
-  estimated fees.  Networks where estimation fails are ignored.
-* **Transaction broadcasting** – signs and broadcasts Ether
-  transfers using a private key supplied via environment variables.
-* **FastAPI backend** – provides `/networks`, `/estimate`, `/route`,
-  `/send` and `/route-and-send` endpoints with JSON responses.
-* **Optional dashboard** – static HTML/JS page served at the root
-  path, allowing quick estimation and routing via a form.
+- 🔗 **Multi-network support** – Arbitrum One, Optimism and Base are supported out of the box. Additional networks can be added via `networks.py`.
+- 💾 **Fee estimation** – Calculates gas price, estimated gas usage and total fees in native tokens. Optionally fetches USD estimates via CoinGecko.
+- 🚣️ **Route selection** – Compares networks and selects the cheapest (or fastest) option. Networks that fail estimation are skipped.
+- 📤 **Transaction broadcasting** – Builds, signs and broadcasts transactions using a private key loaded from environment variables.
+- ⚙️ **FastAPI backend** – Provides REST endpoints for networks, estimation, routing and sending.
+- 💻 **Optional dashboard** – Includes a static HTML dashboard for quick manual estimation and routing.
 
-## 👋 Project Structure
+## Architecture
 
-```
-l2-router-bot/
-│── main.py             # FastAPI application
-│── networks.py         # Network configurations and Web3 client helpers
-│── router.py           # Gas comparison and route selection logic
-│── tx_sender.py        # Transaction signing and broadcasting helper
-│── utils/
-│     └── price_feed.py # Asynchronous price feed using CoinGecko
-│── static/
-│     └── index.html    # Minimal dashboard UI
-│── tests/
-│     └── test_router.py# Unit tests for route selection
-│── .env                # Populate with PRIVATE_KEY and RPC overrides (not checked in)
-│── requirements.txt    # Python dependencies
-└── README.md           # This documentation
+```mermaid
+graph TD
+    subgraph Client
+      Browser(User)
+    end
+    Browser --> |HTTP| FastAPI[FastAPI app]
+    FastAPI --> RouterModule[router.py]
+    FastAPI --> TxSenderModule[tx_sender.py]
+    FastAPI --> PriceFeed[utils/price_feed.py]
+    RouterModule --> NetworksConfig[networks.py]
+    TxSenderModule --> NetworksConfig
+    NetworksConfig --> RPC[(L2 RPC nodes)]
+    PriceFeed --> CoinGecko[(CoinGecko API)]
+    FastAPI --> StaticUI[static/index.html]
 ```
 
-## 🔒 Security Considerations
+FastAPI serves as the entrypoint. `router.py` contains the gas comparison logic. `tx_sender.py` builds and sends signed transactions. Network configurations and RPC clients live in `networks.py`. The optional price feed uses CoinGecko to provide USD estimates.
 
-Sending Ethereum transactions is an irreversible operation.  This
-project **never** stores or exposes your private key in logs or
-responses.  The private key must be supplied via the `PRIVATE_KEY`
-environment variable (or passed explicitly to `TransactionSender`).
+## Installation
 
-Before broadcasting a transaction, ensure that:
+1. Clone the repository:
 
-1. You trust the RPC endpoints you are connecting to.
-2. You understand the fee structure on your selected network.
-3. The `from_address` has sufficient funds to cover both the
-   transfer amount and the gas fee.
-
-Use the `/route` endpoint to inspect estimated costs before using
-`/send` or `/route-and-send`.
-
-## 💪 Usage
-
-### 1. Clone the repository
-
-```sh
-git clone <this‑repo>
+```bash
+git clone https://github.com/karthikeyanvcb/l2-router-bot.git
 cd l2-router-bot
 ```
 
-### 2. Create and activate a virtual environment (optional but recommended)
+2. Create and activate a virtual environment:
 
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
+```bash
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-### 3. Install dependencies
+3. Install dependencies:
 
-```sh
+```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment
+4. Create a `.env` file based on `.env.example` and fill in your own values:
 
-Create a `.env` file in the project root containing your private
-key and any RPC overrides.  For example:
-
-```ini
-PRIVATE_KEY=0xdeadbeef...
-ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
-OPTIMISM_RPC_URL=https://mainnet.optimism.io
-BASE_RPC_URL=https://mainnet.base.org
+```bash
+cp .env.example .env
+# then edit .env to add your PRIVATE_KEY and RPC URLs
 ```
 
-**Never** commit your private key to version control.  In
-production you may prefer to provide these variables via a secret
-manager.
+## Running the Server
 
-### 5. Run the application
+Use Uvicorn to run the FastAPI application:
 
-Start the FastAPI app with Uvicorn:
-
-```sh
-uvicorn l2_router_bot.main:app --host 0.0.0.0 --port 8000 --reload
+```bash
+uvicorn l2_router_bot.main:app --reload
 ```
 
-Navigate to `http://localhost:8000/` to view the dashboard, or use
-the built‑in interactive API docs at `http://localhost:8000/docs`.
+The API will be available at `http://localhost:8000`. The optional dashboard can be accessed at the root path.
 
-## 🌐 API Endpoints
+### Docker (Optional)
 
-### `GET /networks`
+You can also run the service using Docker:
 
-Returns a mapping of supported networks to their RPC endpoints,
-chain IDs and native symbols.
-
-### `POST /estimate`
-
-Estimate transfer costs across all networks.
-
-**Request body** (`application/json`):
-
-```json
-{
-  "from_address": "0x...",
-  "to_address": "0x...",
-  "amount_eth": 0.01,
-  "include_usd": true
-}
+```bash
+docker build -t l2-router-bot .
+docker run --env-file .env -p 8000:8000 l2-router-bot
 ```
 
-**Response:** Per‑network gas price, estimated gas usage and fee
-details.  Networks where estimation failed include an `error` key.
+## API Endpoints
 
-### `POST /route`
+| Endpoint | Method | Description |
+|---------|--------|-------------|
+| `/networks` | GET | List configured networks and their chain IDs. |
+| `/estimate` | POST | Estimate gas cost for a transfer across all networks. |
+| `/route` | POST | Determine the cheapest network for a given transfer. |
+| `/send` | POST | Send a signed transaction on a specified network. |
+| `/route-and-send` | POST | Estimate, choose the cheapest network and immediately send the transfer. |
 
-Select the cheapest network for the given transfer.
+### Example: Estimate Fees
 
-Returns the chosen network and the full set of cost estimates.
-
-### `POST /send`
-
-Send a transaction on a specific network.  Requires a loaded
-private key.  Use only after inspecting the `/route` endpoint.
-
-**Request body**:
-
-```json
-{
-  "network": "optimism",
-  "from_address": "0x...",
-  "to_address": "0x...",
-  "amount_eth": 0.01
-}
+```bash
+curl -X POST http://localhost:8000/estimate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_address": "0xYourAddress",
+    "to_address": "0xRecipientAddress",
+    "amount_eth": 0.01,
+    "include_usd": true
+  }'
 ```
 
-### `POST /route-and-send`
+### Example: Route and Send
 
-Convenience endpoint: estimates costs, selects the cheapest network
-and immediately broadcasts the transaction.  The response contains
-the chosen network, the transaction hash and the full cost table.
-
-## 🔮 Testing
-
-Run the unit tests with:
-
-```sh
-pytest -q
+```bash
+curl -X POST http://localhost:8000/route-and-send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_address": "0xYourAddress",
+    "to_address": "0xRecipientAddress",
+    "amount_eth": 0.01,
+    "include_usd": true
+  }'
 ```
 
-The provided tests cover the route selection logic.  Integration
-tests that talk to real RPC endpoints can be added by mocking Web3
-clients or by running against a local testnet.
+The response will include the chosen network and the transaction hash if broadcasting is successful.
 
-## 📊 Extending the Project
+## Environment Variables
 
-This project is intentionally modular.  You can extend it by:
+All sensitive data (private key, RPC URLs) must be provided through environment variables. See `.env.example` for required values.
 
-* Adding support for more networks by populating
-  `DEFAULT_NETWORKS` in `networks.py`.
-* Implementing ERC‑20 token transfers in `tx_sender.py`.
-* Caching price feed results to reduce API calls.
-* Exposing additional strategies (e.g. prioritise speed over cost).
-* Integrating authentication on the API.
+## Testing
 
-Pull requests and issues are welcome!
+This repository includes a basic test suite using Pytest. To run the tests:
+
+```bash
+pip install -r requirements.txt
+pytest
+```
+
+Some tests may require mocking RPC calls; ensure that environment variables are set accordingly.
+
+## Disclaimer
+
+**Use this software at your own risk.** Sending transactions on Ethereum is irreversible and may result in the loss of funds if misconfigured. Do not commit your private keys to version control and always test in a safe environment.
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request for enhancements or bug fixes.
